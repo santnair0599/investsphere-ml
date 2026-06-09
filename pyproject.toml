@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "investsphere-platform"
+version = "0.1.0"
+description = "Reusable data-platform library for the InvestSphere governed investment-data platform on Databricks"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# lets the tests import the package straight from src/ without installing it
+pythonpath = ["src"]
+testpaths = ["tests"]

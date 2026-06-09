@@ -1,0 +1,35 @@
+InvestSphere – Investment Data and AI Platform
+
+InvestSphere is a proposed Databricks-based data and AI platform for a diversified investment organisation similar to Dubai Holding Investments.
+
+Dubai Holding Investments publicly manages opportunities across different asset classes and geographies, including direct investments, fund investments and co-investments. Its publicly disclosed investments include listed-company stakes such as Emirates NBD and Emaar Properties.
+
+In this business scenario, the organisation needs a trusted way to monitor:
+
+ - Portfolio value and exposure
+ - Profit and loss performance
+ - Investment-policy breaches, such as an illustrative concentration limit for exposure to the UAE banking sector
+
+A diversified investment organisation may receive holdings, pricing, valuation, FX and reference data from multiple sources. When these feeds are fragmented, reporting and compliance checking can become slow, manual and difficult to audit.
+
+InvestSphere addresses this through a governed Databricks lakehouse:
+
+ - Bronze, Silver and Gold layers organise and transform investment data.
+ - Gold tables calculate portfolio exposure, P&L and policy-breach results.
+ - Data-quality checks identify and quarantine invalid or incomplete records.
+ - Unity Catalog applies role-based access and row-level controls.
+ - An AI Policy Copilot combines governed portfolio data with policy-document retrieval to provide explainable answers.
+
+For example, an authorised manager could ask:
+
+“Which portfolios exceeded the illustrative UAE banking concentration limit, by how much, and which policy clause explains the breach?”
+
+The solution would return a controlled and traceable answer based on trusted investment data and retrieved policy evidence.
+
+Business Value
+--------------
+The proposed platform enables faster reporting, earlier identification of policy breaches, stronger data governance, secure access to sensitive portfolio information and quicker decision-making.
+
+Why Databricks?
+---------------
+Databricks is suitable because it brings data engineering, analytics, governance and generative AI together on one platform. This allows structured portfolio analytics and policy-document AI use cases to operate on the same governed foundation.

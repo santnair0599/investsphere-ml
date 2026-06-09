@@ -1,0 +1,53 @@
+{
+  "rules": [
+    {
+      "name": "delete-staging-after-30d",
+      "enabled": true,
+      "type": "Lifecycle",
+      "definition": {
+        "filters": {
+          "blobTypes": ["blockBlob"],
+          "prefixMatch": ["investsphere/staging/"]
+        },
+        "actions": {
+          "baseBlob": {
+            "delete": { "daysAfterModificationGreaterThan": 30 }
+          }
+        }
+      }
+    },
+    {
+      "name": "tier-raw-archive-cool-then-archive",
+      "enabled": true,
+      "type": "Lifecycle",
+      "definition": {
+        "filters": {
+          "blobTypes": ["blockBlob"],
+          "prefixMatch": ["investsphere/archive/raw/"]
+        },
+        "actions": {
+          "baseBlob": {
+            "tierToCool": { "daysAfterModificationGreaterThan": 30 },
+            "tierToArchive": { "daysAfterModificationGreaterThan": 180 }
+          }
+        }
+      }
+    },
+    {
+      "name": "tier-superseded-documents-cool",
+      "enabled": true,
+      "type": "Lifecycle",
+      "definition": {
+        "filters": {
+          "blobTypes": ["blockBlob"],
+          "prefixMatch": ["investsphere/archive/documents/"]
+        },
+        "actions": {
+          "baseBlob": {
+            "tierToCool": { "daysAfterModificationGreaterThan": 90 }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+name: CI
+
+# Runs the unit tests on every push / pull request. The tests cover the pure-Python
+# business logic and need no Spark or cloud -- so CI is fast and free.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run unit tests
+        run: pytest -q
+
+      # Optional: validate the Declarative Automation Bundle (needs Databricks auth
+      # configured as GitHub secrets). Uncomment to enable.
+      # - uses: databricks/setup-cli@main
+      # - run: databricks bundle validate
+      #   env:
+      #     DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      #     DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}

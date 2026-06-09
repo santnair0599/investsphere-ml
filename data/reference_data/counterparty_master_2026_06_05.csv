@@ -1,0 +1,6 @@
+counterparty_id,name,type,risk_category,country
+CP_001,EFG Hermes,BROKER,LOW,AE
+CP_002,Arqaam Capital,BROKER,MEDIUM,AE
+CP_003,Goldman Sachs Intl,BROKER,LOW,US
+CP_004,Daman Securities,BROKER,MEDIUM,AE
+CP_005,Shuaa Capital,BROKER,HIGH,AE

@@ -1,0 +1,7 @@
+benchmark_id,sector,target_weight_pct
+BMK_GULF,Banking,30.0
+BMK_GULF,Energy,20.0
+BMK_GULF,Telecom,15.0
+BMK_GULF,RealEstate,20.0
+BMK_GULF,Technology,10.0
+BMK_GULF,Other,5.0

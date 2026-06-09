@@ -1,0 +1,16 @@
+# Local development / testing only.
+pytest>=8.0
+fpdf2>=2.7        # only for data/generate_documents.py (creates the sample PDFs)
+
+# pypdf is used by ai/01_build_ai_search_index.py to read PDFs ON DATABRICKS;
+# not needed for local tests:
+# pypdf>=4.0
+
+# prometheus_client is used by the metrics exporter (pushes to a Pushgateway) on
+# Databricks; imported lazily, not needed for local tests:
+# prometheus_client>=0.20
+
+# PySpark is provided by the Databricks runtime, so you do NOT need it to run the
+# unit tests. Install it locally only if you want to run the medallion pipelines
+# on a local Spark (heavier; optional):
+# pyspark==3.5.1

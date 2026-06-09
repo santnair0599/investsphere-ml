@@ -1,0 +1,44 @@
+{
+  "title": "InvestSphere - Pipeline Performance",
+  "tags": ["investsphere"],
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Valid transactions (last run)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "investsphere_rows_valid", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Quarantine rate %",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "investsphere_quarantine_rate_pct", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Open limit breaches",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "investsphere_breach_count", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Rows valid vs quarantined (trend)",
+      "gridPos": { "h": 8, "w": 18, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "investsphere_rows_valid", "refId": "A", "legendFormat": "valid" },
+        { "expr": "investsphere_rows_quarantined", "refId": "B", "legendFormat": "quarantined" }
+      ]
+    }
+  ]
+}

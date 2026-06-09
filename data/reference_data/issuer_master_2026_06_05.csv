@@ -1,0 +1,13 @@
+issuer_id,issuer_name,country,credit_rating
+ISS_ENBD,Emirates NBD Group,AE,A2
+ISS_FAB,First Abu Dhabi Bank PJSC,AE,Aa3
+ISS_ADCB,Abu Dhabi Commercial Bank,AE,A1
+ISS_DIB,Dubai Islamic Bank,AE,A3
+ISS_ADNOC,ADNOC Group,AE,Aa2
+ISS_EAND,Emirates Telecom Group,AE,Aa3
+ISS_EMAAR,Emaar Properties PJSC,AE,Baa3
+ISS_ALDAR,Aldar Properties PJSC,AE,Baa2
+ISS_AAPL,Apple Inc,US,Aaa
+ISS_MSFT,Microsoft Corp,US,Aaa
+ISS_GULFLOG,Gulf Logistics Holding,AE,NR
+ISS_GBF,Global Bond Fund Mgr,US,NR

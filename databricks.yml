@@ -1,0 +1,331 @@
+# Declarative Automation Bundle (formerly Databricks Asset Bundles).
+# Orchestrates InvestSphere with the right CADENCE per data type, plus HIGH-
+# AVAILABILITY controls on every job: task retries, run timeouts, failure/duration
+# notifications, and a run-duration health rule.
+#
+# Compute is SERVERLESS (this workspace is Databricks Free Edition / serverless):
+# dependencies are declared per job in an `environments` block and referenced by each
+# task via `environment_key` -- serverless does NOT use job_clusters or task libraries.
+#
+#   databricks bundle validate -t dev
+#   databricks bundle deploy -t dev
+
+bundle:
+  name: investsphere
+
+variables:
+  catalog: { default: investsphere }
+  # SQL warehouse the data-quality checks run on (populates governance.dq_results,
+  # which the Databricks SQL alerts in terraform/dq_alerts.tf watch).
+  warehouse_id: { default: "" }
+  # On-call alert recipient, shared by the jobs (_notify) and the Lakeflow pipeline.
+  # Override per target (dev/prod) so environments can route alerts differently.
+  oncall_email: { default: "santnair0599@gmail.com" }
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace: { host: https://dbc-d3c7f717-df2a.cloud.databricks.com }
+  prod:
+    mode: production
+    workspace: { host: https://dbc-d3c7f717-df2a.cloud.databricks.com }
+
+# HA: failure / slow-run alerts, reused by every job (recipient = the oncall_email var).
+_notify: &notify
+  on_failure: ["${var.oncall_email}"]
+  on_duration_warning_threshold_exceeded: ["${var.oncall_email}"]
+
+# HA: warn if a run exceeds 30 min (early signal of a stuck/degraded run).
+_health: &health
+  rules:
+    - { metric: RUN_DURATION_SECONDS, op: GREATER_THAN, value: 1800 }
+
+# HA: standard task retry policy (transient-failure resilience).
+_retry: &retry
+  max_retries: 2
+  min_retry_interval_millis: 60000
+  retry_on_timeout: true
+
+# Reusable platform wheel (built by the `artifacts` block) as a SERVERLESS environment
+# dependency, so `import investsphere_platform` works with no sys.path hacks. Jobs that
+# need extra PyPI packages list them alongside the wheel in their own environment.
+_deps: &deps
+  - ./dist/investsphere_platform-0.1.0-py3-none-any.whl
+
+# Build + upload the library wheel on `bundle deploy`. The local ./dist path used in the
+# environment dependencies is uploaded with the bundle.
+artifacts:
+  investsphere_platform:
+    type: whl
+    path: .
+    build: python -m pip wheel . --no-deps -w dist
+
+resources:
+  jobs:
+
+    # (A) INGEST -- triggered on new files in the raw landing zone.
+    # Use IMMUTABLE filenames; file-arrival triggers fire on NEW files only.
+    investsphere_ingest:
+      name: investsphere_ingest
+      tags: { project: investsphere, cadence: on_arrival }
+      timeout_seconds: 3600
+      max_concurrent_runs: 1
+      email_notifications: *notify
+      health: *health
+      trigger:
+        file_arrival:
+          url: /Volumes/investsphere/bronze/raw/
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"            # serverless env version; bump to match your workspace
+            dependencies: *deps
+      tasks:
+        - task_key: bronze
+          environment_key: default
+          <<: *retry
+          spark_python_task: { python_file: ./pipelines/bronze_ingest.py }
+
+    # (B) EOD -- daily, PARAMETERIZED + CONDITIONAL:
+    #   readiness_gate sets a task value `feeds_ready`; a CONDITION TASK branches on it.
+    #   true -> silver -> gold     false -> notify_not_ready (Gold skipped).
+    investsphere_eod:
+      name: investsphere_eod
+      tags: { project: investsphere, cadence: daily }
+      timeout_seconds: 3600
+      max_concurrent_runs: 1
+      email_notifications: *notify
+      health: *health
+      schedule:
+        quartz_cron_expression: "0 0 18 * * ?"   # 18:00 every day
+        timezone_id: Asia/Dubai
+      parameters:
+        - { name: run_date, default: "2026-05-29" }
+        - { name: catalog, default: investsphere }
+        - { name: pushgateway_url, default: "http://pushgateway:9091" }
+      # export_metrics needs prometheus_client; one env serves the whole job.
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - ./dist/investsphere_platform-0.1.0-py3-none-any.whl
+              - prometheus_client>=0.20
+      tasks:
+        - task_key: readiness_gate
+          environment_key: default
+          <<: *retry
+          spark_python_task:
+            python_file: ./pipelines/eod_readiness_check.py
+            parameters: ["--run_date", "{{job.parameters.run_date}}", "--catalog", "{{job.parameters.catalog}}"]
+        # CONDITION TASK: proceed only if feeds_ready == "true"
+        - task_key: feeds_ready
+          depends_on: [{ task_key: readiness_gate }]
+          condition_task:
+            op: EQUAL_TO
+            left: "{{tasks.readiness_gate.values.feeds_ready}}"
+            right: "true"
+        - task_key: silver
+          environment_key: default
+          depends_on: [{ task_key: feeds_ready, outcome: "true" }]
+          <<: *retry
+          spark_python_task:
+            python_file: ./pipelines/silver_conform.py
+            # run_ts -> pipeline_run_id (varies per run so the quarantine rate is per-run);
+            # run_date -> business_date; job_run_id -> the Databricks Jobs run id.
+            parameters: ["--catalog", "{{job.parameters.catalog}}",
+                         "--run_date", "{{job.parameters.run_date}}",
+                         "--run_ts", "{{job.run_id}}", "--job_run_id", "{{job.run_id}}"]
+        - task_key: gold
+          environment_key: default
+          depends_on: [{ task_key: silver }]
+          <<: *retry
+          spark_python_task:
+            python_file: ./pipelines/gold_marts.py
+            parameters: ["--run_date", "{{job.parameters.run_date}}", "--catalog", "{{job.parameters.catalog}}"]
+        # push pipeline metrics to Prometheus (Grafana visualises them)
+        - task_key: export_metrics
+          environment_key: default
+          depends_on: [{ task_key: gold }]
+          spark_python_task:
+            python_file: ./pipelines/export_pipeline_metrics.py
+            # job.start_time is the JOB-RUN start (UTC); export is the last task, so
+            # start->now ≈ end-to-end pipeline duration.
+            parameters: ["--catalog", "{{job.parameters.catalog}}",
+                         "--pushgateway_url", "{{job.parameters.pushgateway_url}}",
+                         "--job_start_iso", "{{job.start_time.iso_datetime}}"]
+        # compute custom DQ metrics into governance.dq_results -> the SQL alerts
+        # (terraform/dq_alerts.tf) watch this table and notify on-call on breach.
+        - task_key: dq_checks
+          depends_on: [{ task_key: gold }]
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file: { path: ./quality_monitoring/custom_dq_checks.sql }
+            parameters:
+              business_date: "{{job.parameters.run_date}}"
+              job_run_id: "{{job.run_id}}"
+        # After Gold is ready, CHAIN the ML pipeline (feature build -> training set ->
+        # train/register -> batch inference -> monitoring) as a separate job, so its ML
+        # deps (scikit-learn / mlflow / feature-engineering) don't bloat the EOD env.
+        - task_key: ml_pipeline
+          depends_on: [{ task_key: gold }]
+          run_job_task:
+            job_id: ${resources.jobs.investsphere_ml_pipeline.id}
+            job_parameters:
+              catalog: "{{job.parameters.catalog}}"
+              run_date: "{{job.parameters.run_date}}"
+              job_run_id: "{{job.run_id}}"
+        # FALSE branch: feeds missing -> notify and skip Gold
+        - task_key: notify_not_ready
+          environment_key: default
+          depends_on: [{ task_key: feeds_ready, outcome: "false" }]
+          spark_python_task:
+            python_file: ./pipelines/notify_not_ready.py
+            parameters: ["--run_date", "{{job.parameters.run_date}}"]
+
+    # (C) PRIVATE / FUND VALUATIONS -- monthly
+    investsphere_private_nav:
+      name: investsphere_private_nav
+      tags: { project: investsphere, cadence: monthly }
+      timeout_seconds: 3600
+      max_concurrent_runs: 1
+      email_notifications: *notify
+      health: *health
+      schedule:
+        quartz_cron_expression: "0 0 20 1 * ?"   # 20:00 on the 1st of each month
+        timezone_id: Asia/Dubai
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies: *deps
+      tasks:
+        - task_key: private_nav
+          environment_key: default
+          <<: *retry
+          spark_python_task: { python_file: ./pipelines/gold_private_valuations.py }
+
+    # (D) DOCS -> RAG -- triggered on document upload (incremental MERGE + index sync).
+    investsphere_docs_rag:
+      name: investsphere_docs_rag
+      tags: { project: investsphere, cadence: on_upload }
+      timeout_seconds: 1800
+      max_concurrent_runs: 1
+      email_notifications: *notify
+      health: *health
+      trigger:
+        file_arrival:
+          url: /Volumes/investsphere/ai/documents/
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - ./dist/investsphere_platform-0.1.0-py3-none-any.whl
+              - pypdf>=4.0
+      tasks:
+        - task_key: refresh_rag
+          environment_key: default
+          <<: *retry
+          spark_python_task: { python_file: ./ai/03_refresh_documents.py }
+
+    # (E) MAINTENANCE (DEMO) -- weekly OPTIMIZE / VACUUM. Production prefers
+    # Predictive Optimization for UC managed tables.
+    investsphere_maintenance_demo:
+      name: investsphere_maintenance_demo
+      tags: { project: investsphere, cadence: weekly }
+      timeout_seconds: 3600
+      max_concurrent_runs: 1
+      email_notifications: *notify
+      health: *health
+      schedule:
+        quartz_cron_expression: "0 0 2 ? * SUN"   # 02:00 every Sunday
+        timezone_id: Asia/Dubai
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies: *deps
+      tasks:
+        - task_key: maintenance
+          environment_key: default
+          <<: *retry
+          spark_python_task: { python_file: ./pipelines/maintenance.py }
+
+    # (F) ML PIPELINE -- the back half of the MLOps loop, chained AFTER Gold readiness:
+    #   feature build -> training-set prep -> train + UC-register -> batch inference ->
+    #   model monitoring (writes ml_* rows into governance.dq_results).
+    # Triggered by investsphere_eod's `ml_pipeline` run_job_task after the `gold` task,
+    # and runnable on its own:  databricks bundle run investsphere_ml_pipeline -t dev
+    # NOTE: OFFLINE batch scoring only -- no paid Model Serving endpoint is created.
+    investsphere_ml_pipeline:
+      name: investsphere_ml_pipeline
+      tags: { project: investsphere, cadence: daily, layer: ml }
+      timeout_seconds: 3600
+      max_concurrent_runs: 1
+      email_notifications: *notify
+      health: *health
+      # Job parameters are surfaced to each spark_python_task as widgets; the ML scripts
+      # read them via dbutils.widgets.get("catalog" / "run_date" / "job_run_id").
+      parameters:
+        - { name: catalog, default: investsphere }
+        - { name: run_date, default: "2026-05-29" }
+        - { name: job_run_id, default: "" }
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - ./dist/investsphere_platform-0.1.0-py3-none-any.whl
+              - scikit-learn>=1.3
+              - mlflow>=2.16
+              - databricks-feature-engineering>=0.6
+      tasks:
+        - task_key: feature_build
+          environment_key: default
+          <<: *retry
+          spark_python_task: { python_file: ./features/build_portfolio_features.py }
+        - task_key: prepare_training_set
+          environment_key: default
+          depends_on: [{ task_key: feature_build }]
+          <<: *retry
+          spark_python_task: { python_file: ./ml/prepare_training_set.py }
+        - task_key: train_model
+          environment_key: default
+          depends_on: [{ task_key: prepare_training_set }]
+          <<: *retry
+          spark_python_task: { python_file: ./ml/train_breach_model.py }
+        - task_key: batch_inference
+          environment_key: default
+          depends_on: [{ task_key: train_model }]
+          <<: *retry
+          spark_python_task: { python_file: ./ml/batch_inference.py }
+        - task_key: model_monitoring
+          environment_key: default
+          depends_on: [{ task_key: batch_inference }]
+          <<: *retry
+          spark_python_task: { python_file: ./ml/model_monitoring.py }
+
+  # Lakeflow declarative pipeline (Auto Loader + expectations). Serverless + Photon;
+  # the pipeline runtime provides its own retry/recovery for streaming flows.
+  pipelines:
+    investsphere_lakeflow:
+      name: investsphere_lakeflow
+      catalog: investsphere
+      target: silver
+      photon: true
+      serverless: true
+      continuous: false
+      # Pipelines use their own notifications schema (not email_notifications):
+      # alert on-call when an update fails, fatally fails, or a flow fails.
+      notifications:
+        - email_recipients: ["${var.oncall_email}"]
+          alerts:
+            - on-update-failure
+            - on-update-fatal-failure
+            - on-flow-failure
+      libraries:
+        - file: { path: ./pipelines/lakeflow_pipeline.py }
+
+# Secrets: never hardcode tokens -> dbutils.secrets.get(scope="investsphere", key=...)

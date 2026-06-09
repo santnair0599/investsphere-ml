@@ -1,0 +1,6 @@
+limit_id,scope_type,scope_value,portfolio_id,max_pct
+LIM_001,SECTOR,Banking,GULF_EQ,20.0
+LIM_002,SECTOR,Technology,GLOBAL_BAL,40.0
+LIM_003,ISSUER,ISS_ENBD,ALL,25.0
+LIM_004,COUNTERPARTY,CP_005,ALL,15.0
+LIM_005,SECTOR,Banking,ALL,35.0

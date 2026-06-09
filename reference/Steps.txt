@@ -1,0 +1,44 @@
+1. Create Project Folder and open in VS Code
+2. Create virtual environment and activate it
+3. run python -m pip freeze > requirements.txt
+4. run python data/generate_data.py
+5. run python -m pip install fpdf2
+6. run python data/generate_documents.py
+7. Copy pyproject.toml file
+8. create folder src -> investsphere_platform
+9. Inside investsphere_platform create folders monitoring, quality, transformations, __init__.py
+10. Create inside transformation - __init__.py, exposure_calculator.py, scd2.py, deduplication.py
+11. Create inside  quality - __init__.py, dq_rules.py, dq_runner.py
+12. Create inside monitoring - __init__.py, prometheus_exporter.py 
+13. create tests folder with files - test_exposure_calculator.py, test_dq_rules.py, test_scd2.py, test_prometheus_exporter.py
+
+----------------------------------------------------------------------------------------------------------------------------------------
+DATABRICKS FREE EDITION
+---------------------------------------------------------------------------------------------------------------------------------------
+1. create catalog investsphere with comment - 'investment analytics and RAG classroom demo';
+CREATE SCHEMA:
+ - investsphere.bronze;
+ - investsphere.silver;
+ - investsphere.gold;
+ - investsphere.governance;
+ - investsphere.ai;
+
+CREATE VOLUME:
+ - investsphere.bronze.raw;
+ - investsphere.ai.documents;
+
+2. Add todays date to all files and upload files to bronze.raw folder
+/Volumes/investsphere/bronze/raw/portfolio_master/
+/Volumes/investsphere/bronze/raw/investment_asset_master/
+/Volumes/investsphere/bronze/raw/issuer_master/
+/Volumes/investsphere/bronze/raw/counterparty_master/
+/Volumes/investsphere/bronze/raw/investment_limits/
+/Volumes/investsphere/bronze/raw/benchmark_or_target_allocation/
+/Volumes/investsphere/bronze/raw/currency_rates/
+/Volumes/investsphere/bronze/raw/investment_transactions/
+/Volumes/investsphere/bronze/raw/cashflows/
+/Volumes/investsphere/bronze/raw/corporate_actions/
+/Volumes/investsphere/bronze/raw/listed_market_prices/
+/Volumes/investsphere/bronze/raw/investment_holdings_snapshot/
+
+3. 
